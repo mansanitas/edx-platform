@@ -30,7 +30,8 @@ from common.test.acceptance.tests.helpers import (
     UniqueCourseTest,
     create_multiple_choice_problem,
     disable_animations,
-    get_modal_alert
+    get_modal_alert,
+    auto_auth
 )
 from openedx.core.lib.tests import attr
 
@@ -65,6 +66,9 @@ class BaseInstructorDashboardTest(EventsTestMixin, UniqueCourseTest):
         instructor_dashboard_page = InstructorDashboardPage(self.browser, self.course_id)
         instructor_dashboard_page.visit()
         return instructor_dashboard_page
+
+    def enroll_in_learner_in_mode(self, username, email, mode):
+        return auto_auth(self.browser, username, email, False, self.course_id, enrollment_mode=mode, no_login=True)
 
 
 @attr('a11y')
@@ -348,7 +352,7 @@ class ProctoredExamsTest(BaseInstructorDashboardTest):
 
     def _login_as_a_verified_user(self):
         """
-        login as a verififed user
+        login as a verified user
         """
 
         self._auto_auth(self.USERNAME, self.EMAIL, False)
@@ -588,9 +592,20 @@ class DataDownloadsTest(BaseInstructorDashboardTest):
     """
     Bok Choy tests for the "Data Downloads" tab.
     """
+    VERIFIED_USERNAME = "VERIFIED_STUDENT"
+    VERIFIED_USER_EMAIL = "verified@example.com"
+
     def setUp(self):
         super(DataDownloadsTest, self).setUp()
         self.course_fixture = CourseFixture(**self.course_info).install()
+
+        # Add a verified mode to the course
+        ModeCreationPage(
+            self.browser, self.course_id, mode_slug=u'verified', mode_display_name=u'Verified Certificate',
+            min_price=10, suggested_prices='10,20'
+        ).visit()
+        self.enroll_in_learner_in_mode(self.VERIFIED_USERNAME, self.VERIFIED_USER_EMAIL, mode='verified')
+
         self.instructor_username, self.instructor_id, __, __ = self.log_in_as_instructor(
             course_access_roles=['data_researcher']
         )
@@ -642,38 +657,78 @@ class DataDownloadsTest(BaseInstructorDashboardTest):
         self.verify_report_requested_event(report_name)
         self.verify_report_download(report_name)
 
-    def test_grade_report_download(self):
+    def test_grade_report_download_all_learners(self):
         """
-        Scenario: Verify that an instructor can download a grade report
+        Scenario: Verify that an instructor can download a grade report for all learners
 
         Given that I am an instructor
         And I visit the instructor dashboard's "Data Downloads" tab
-        And I click on the "Generate Grade Report" button
+        I select "Grade Report: All Learners" from the dropdown.
+        And then I click on the "Submit" button right next to the dropdown.
         Then a report should be generated
         And a report requested event should be emitted
         When I click on the report
         Then a report downloaded event should be emitted
         """
-        report_name = u"grade_report"
-        self.data_download_section.generate_grade_report_button.click()
+        report_name = "grade_report_all_learners"
+        self.data_download_section.generate_course_grade_report_for_all_learners()
         self.data_download_section.wait_for_available_report()
         self.verify_report_requested_event(report_name)
         self.verify_report_download(report_name)
 
-    def test_problem_grade_report_download(self):
+    def test_grade_report_download_verified_learners(self):
         """
-        Scenario: Verify that an instructor can download a problem grade report
+        Scenario: Verify that an instructor can download a grade report for verified learners.
 
         Given that I am an instructor
         And I visit the instructor dashboard's "Data Downloads" tab
-        And I click on the "Generate Problem Grade Report" button
+        I select "Grade Report: Verified Learners Only" from the dropdown.
+        And then I click on the "Submit" button right next to the dropdown.
         Then a report should be generated
         And a report requested event should be emitted
         When I click on the report
         Then a report downloaded event should be emitted
         """
-        report_name = u"problem_grade_report"
-        self.data_download_section.generate_problem_report_button.click()
+        report_name = "grade_report_verified_learners"
+        self.data_download_section.generate_course_grade_report_for_verified_learners()
+        self.data_download_section.wait_for_available_report()
+        self.verify_report_requested_event(report_name)
+        self.verify_report_download(report_name)
+
+    def test_problem_grade_report_download_all_learners(self):
+        """
+        Scenario: Verify that an instructor can download a problem grade report for all learners.
+
+        Given that I am an instructor
+        And I visit the instructor dashboard's "Data Downloads" tab
+        I select "Problem Report: All Learners" from the dropdown
+        And then I click on the "Submit" button right next to the dropdown.
+        Then a report should be generated
+        And a report requested event should be emitted
+        When I click on the report
+        Then a report downloaded event should be emitted
+        """
+        report_name = "problem_grade_report_all_learners"
+        self.data_download_section.generate_problem_report_for_all_learners()
+        self.data_download_section.wait_for_available_report()
+        self.verify_report_requested_event(report_name)
+        self.verify_report_download(report_name)
+
+    def test_problem_grade_report_download_verified_learners(self):
+        """
+        Scenario: Verify that an instructor can download a problem grade report for verified learners.
+
+        Given that I am an instructor
+        And I visit the instructor dashboard's "Data Downloads" tab
+        I select "Problem Report: Verified Learners Only" from the dropdown
+        And then I click on the "Submit" button right next to the dropdown.
+        Then a report should be generated
+        And a report requested event should be emitted
+        When I click on the report
+        Then a report downloaded event should be emitted
+        """
+        report_name = "problem_grade_report_verified_learners"
+        self.data_download_section.generate_problem_report_for_verified_learners()
         self.data_download_section.wait_for_available_report()
         self.verify_report_requested_event(report_name)
         self.verify_report_download(report_name)
@@ -684,11 +739,12 @@ class DataDownloadsTest(BaseInstructorDashboardTest):
 
         Given that I am an instructor
         And I visit the instructor dashboard's "Data Downloads" tab
-        And I click on the "Download ORA2 Responses" button
+        I select "ORA Data Report" from the dropdown.
+        And then I click on the "Submit" button right next to the dropdown.
         Then a report should be generated
         """
-        report_name = u"ORA_data"
-        self.data_download_section.generate_ora2_response_report_button.click()
+        report_name = "ORA_data"
+        self.data_download_section.generate_ora2_response_report()
         self.data_download_section.wait_for_available_report()
         self.verify_report_download(report_name)
 
