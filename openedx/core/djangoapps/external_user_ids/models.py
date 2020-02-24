@@ -24,6 +24,9 @@ class ExternalIdType(TimeStampedModel):
     """
     MICROBACHELORS_COACHING = 'mb_coaching'
 
+    class Meta:
+        app_label = 'external_user_ids'
+
     name = models.CharField(max_length=32, blank=False, unique=True, db_index=True)
     description = models.TextField()
     history = HistoricalRecords()
@@ -46,7 +49,6 @@ class ExternalId(TimeStampedModel):
 
     class Meta:
         unique_together = (('user', 'external_id_type'),)
-        app_label = 'external_user_ids'
 
     @classmethod
     def user_has_external_id(cls, user, type_name):
