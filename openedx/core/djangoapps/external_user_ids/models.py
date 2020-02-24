@@ -60,17 +60,16 @@ class ExternalId(TimeStampedModel):
         Returns:
             (Bool): True if the user already has an external ID, False otherwise.
         """
-        try:
-            type_obj = ExternalIdType.objects.get(name=type_name)
-        except ExternalIdType.DoesNotExist:
-            LOGGER.info('No external id type of {}'.format(type_name))
-            return False
-        if cls.objects.filter(
+        if not cls.objects.filter(
             user=user,
-            external_id_type=type_obj
+            external_id_type__name=type_name
         ).exists():
-            return True
-        return False
+            LOGGER.info('No external id for user id {user} with type of {type}'.format(
+                user=user.id,
+                type=type_name
+            ))
+            return False
+        return True
 
     @classmethod
     def add_new_user_id(cls, user, type_name):
