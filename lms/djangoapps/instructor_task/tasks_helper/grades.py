@@ -269,9 +269,16 @@ class CourseGradeReport(object):
         """
         A generator of batches of (success_rows, error_rows) for this report.
         """
-        for users in self._batch_users(context):
-            users = [u for u in users if u is not None]
-            yield self._rows_for_users(context, users)
+        empty_generator_sentinel = object()
+        batch_users = self._batch_users(context)
+        a_batch_of_users = next(batch_users, empty_generator_sentinel)
+        the_batch_is_empty = a_batch_of_users == empty_generator_sentinel
+        if the_batch_is_empty:
+            yield [], []
+        else:
+            yield self._rows_for_users(context, a_batch_of_users)
+            for users in batch_users:
+                yield self._rows_for_users(context, users)
 
     def _compile(self, context, batched_rows):
         """
@@ -351,7 +358,10 @@ class CourseGradeReport(object):
                 verified_only=verified_only,
             )
             users = users.select_related('profile')
-            return grouper(users)
+            user_chunks = grouper(users)
+            for users in user_chunks:
+                clean_users = [user for user in users if user is not None]
+                yield clean_users
 
         def users_for_course_v2(course_id, verified_only=False):
             """
@@ -625,13 +635,12 @@ class ProblemGradeReport(object):
                 log_message = '{0} {1}/{2}'.format(step, task_progress.attempted, task_progress.total)
                 log_task_info(log_message)
 
-        log_task_info('Uploading CSV to store')
-        # Perform the upload if any students have been successfully graded
         report_for = 'verified' if verified_learners_only_report else 'all'
         csv_name = 'problem_grade_report_{}_learners'.format(report_for)
+        log_task_info('Uploading CSV to store')
+        # Perform the upload if any students have been successfully graded
+        upload_csv_to_report_store(rows, csv_name, course_id, start_date)
 
-        if len(rows) > 1:
-            upload_csv_to_report_store(rows, csv_name, course_id, start_date)
         # If there are any error rows, write them out as well
         if len(error_rows) > 1:
             upload_csv_to_report_store(error_rows, '_'.join([csv_name, 'err']), course_id, start_date)

@@ -85,15 +85,12 @@ from shoppingcart.models import (
 from student.models import ALLOWEDTOENROLL_TO_ENROLLED, CourseEnrollment, CourseEnrollmentAllowed, ManualEnrollmentAudit
 from student.tests.factories import CourseEnrollmentFactory, UserFactory
 from survey.models import SurveyAnswer, SurveyForm
-from waffle.testutils import override_switch
 
-# from waffle_utils.testutils import override_waffle_flag
 from xmodule.modulestore import ModuleStoreEnum
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
 from xmodule.modulestore.tests.factories import CourseFactory, ItemFactory, check_mongo_calls
 from xmodule.partitions.partitions import Group, UserPartition
 
-# from ..config.waffle import GENERATE_GRADE_REPORT_VERIFIED_ONLY, waffle_flags, DATA_DOWNLOAD_REPORTS_NEW_UI
 from ..models import ReportStore
 from ..tasks_helper.utils import UPDATE_STATUS_FAILED, UPDATE_STATUS_SUCCEEDED
 
@@ -911,7 +908,8 @@ class TestProblemGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
         ])
 
     @patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task')
-    def test_single_problem(self, _get_current_task):
+    def test_problem_grade_report_all_learners(self, _get_current_task):
+        verified_student = self.create_student(u'user_verified', mode='verified')
         vertical = ItemFactory.create(
             parent_location=self.problem_section.location,
             category='vertical',
@@ -921,8 +919,9 @@ class TestProblemGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
         self.define_option_problem(u'Problem1', parent=vertical)
 
         self.submit_student_answer(self.student_1.username, u'Problem1', ['Option 1'])
+        self.submit_student_answer(verified_student.username, u'Problem1', ['Option 1'])
         result = ProblemGradeReport.generate(None, None, self.course.id, {}, 'graded')
-        self.assertDictContainsSubset({'action_name': 'graded', 'attempted': 2, 'succeeded': 2, 'failed': 0}, result)
+        self.assertDictContainsSubset({'action_name': 'graded', 'attempted': 3, 'succeeded': 3, 'failed': 0}, result)
         problem_name = u'Homework 1: Subsection - Problem1'
         header_row = self.csv_header_row + [problem_name + ' (Earned)', problem_name + ' (Possible)']
         self.verify_rows_in_csv([
@@ -945,12 +944,22 @@ class TestProblemGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
                     ENROLLED_IN_COURSE,
                     '0.0', u'Not Attempted', '2.0',
                 ]
-            )))
+            ))),
+            dict(list(zip(
+                header_row,
+                [
+                    text_type(verified_student.id),
+                    verified_student.email,
+                    verified_student.username,
+                    ENROLLED_IN_COURSE,
+                    '0.01', '1.0', '2.0',
+                ]
+            ))),
         ])
 
     @patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task')
-    def test_single_problem_verified_student_only(self, _get_current_task):
-        student_verified = self.create_student(u'user_verified', mode='verified')
+    def test_problem_grade_report_verified_students_only(self, _get_current_task):
+        verified_student = self.create_student(u'user_verified', mode='verified')
         vertical = ItemFactory.create(
             parent_location=self.problem_section.location,
             category='vertical',
@@ -960,7 +969,7 @@ class TestProblemGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
         self.define_option_problem(u'Problem1', parent=vertical)
 
         self.submit_student_answer(self.student_1.username, u'Problem1', ['Option 1'])
-        self.submit_student_answer(student_verified.username, u'Problem1', ['Option 1'])
+        self.submit_student_answer(verified_student.username, u'Problem1', ['Option 1'])
         result = ProblemGradeReport.generate(None, None, self.course.id, {VERIFIED_LEARNERS_ONLY: True}, 'graded')
         self.assertDictContainsSubset(
             {'action_name': 'graded', 'attempted': 1, 'succeeded': 1, 'failed': 0}, result
@@ -1978,13 +1987,15 @@ class TestGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
             display_name='Empty',
         )
 
-    def test_grade_report(self):
+    def test_course_grade_report_for_all_learners(self):
+        verified_student = self.create_student(u'user_verified', mode='verified')
+        self.submit_student_answer(verified_student.username, u'Problem1', ['Option 1'])
         self.submit_student_answer(self.student.username, u'Problem1', ['Option 1'])
 
         with patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task'):
             result = CourseGradeReport.generate(None, None, self.course.id, {}, 'graded')
             self.assertDictContainsSubset(
-                {'action_name': 'graded', 'attempted': 1, 'succeeded': 1, 'failed': 0},
+                {'action_name': 'graded', 'attempted': 2, 'succeeded': 2, 'failed': 0},
                 result,
             )
             self.verify_rows_in_csv(
@@ -1997,7 +2008,18 @@ class TestGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
                         u'Homework 1: Subsection': '0.5',
                         u'Homework 2: Unattempted': 'Not Attempted',
                         u'Homework 3: Empty': 'Not Attempted',
-                        u'Homework (Avg)': text_type(1.0 / 6.0),
+                        u'Homework (Avg)': text_type(1.0 / 6.0)
+                    },
+                    {
+
+                        u'Student ID': text_type(verified_student.id),
+                        u'Email': verified_student.email,
+                        u'Username': verified_student.username,
+                        u'Grade': '0.13',
+                        u'Homework 1: Subsection': '0.5',
+                        u'Homework 2: Unattempted': 'Not Attempted',
+                        u'Homework 3: Empty': 'Not Attempted',
+                        u'Homework (Avg)': text_type(1.0 / 6.0)
                     },
                 ],
                 ignore_other_columns=True,
@@ -2041,13 +2063,13 @@ class TestGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
             )
 
     @patch('lms.djangoapps.instructor_task.tasks_helper.runner._get_current_task')
-    def test_course_grade_with_verified_student_only(self, _get_current_task):
+    def test_course_grade_report_for_verified_learners(self, _get_current_task):
         """
         Tests that course grade report has expected data when it is generated only for
         verified learners.
         """
-        student_1 = self.create_student(u'user_honor')
-        student_verified = self.create_student(u'user_verified', mode='verified')
+        non_verified_student = self.create_student(u'user_honor')
+        verified_student = self.create_student(u'user_verified', mode='verified')
         vertical = ItemFactory.create(
             parent_location=self.problem_section.location,
             category='vertical',
@@ -2056,8 +2078,8 @@ class TestGradeReport(TestReportMixin, InstructorTaskModuleTestCase):
         )
         self.define_option_problem(u'Problem1', parent=vertical)
 
-        self.submit_student_answer(student_1.username, u'Problem1', ['Option 1'])
-        self.submit_student_answer(student_verified.username, u'Problem1', ['Option 1'])
+        self.submit_student_answer(non_verified_student.username, u'Problem1', ['Option 1'])
+        self.submit_student_answer(verified_student.username, u'Problem1', ['Option 1'])
         result = CourseGradeReport.generate(None, None, self.course.id, {VERIFIED_LEARNERS_ONLY: True}, 'graded')
         self.assertDictContainsSubset(
             {'action_name': 'graded', 'attempted': 1, 'succeeded': 1, 'failed': 0}, result
