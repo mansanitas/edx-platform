@@ -46,6 +46,7 @@ class ExternalId(TimeStampedModel):
 
     class Meta:
         unique_together = (('user', 'external_id_type'),)
+        app_label = 'external_user_ids'
 
     @classmethod
     def user_has_external_id(cls, user, type_name):
