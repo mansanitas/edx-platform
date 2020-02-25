@@ -30,7 +30,7 @@ def create_external_id_for_microbachelors_program(
     ):
         mb_programs = [
             program for program in get_programs(course=instance.course_id)
-            if program.get('type_slug', '') == 'microbachelors'
+            if program.get('type_attrs', None) and program['type_attrs']['coaching_supported']
         ]
         if mb_programs:
             ExternalId.add_new_user_id(

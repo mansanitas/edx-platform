@@ -48,7 +48,7 @@ class MicrobachelorsExternalIDTest(ModuleStoreTestCase, CacheIsolationTestCase):
             program['courses'].append(CourseFactory(id=course_key))
 
         program['type'] = 'MicroBachelors'
-        program['type_slug'] = 'microbachelors'
+        program['type_attrs']['coaching_supported'] = True
 
         for course in program['courses']:
             course_run = course['course_runs'][0]['key']
