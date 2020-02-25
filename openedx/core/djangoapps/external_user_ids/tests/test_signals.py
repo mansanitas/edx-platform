@@ -11,6 +11,7 @@ from openedx.core.djangoapps.catalog.cache import PROGRAM_CACHE_KEY_TPL, COURSE_
 from student.models import CourseEnrollment
 from course_modes.models import CourseMode
 from openedx.core.djangoapps.external_user_ids.models import ExternalId, ExternalIdType
+from openedx.core.djangolib.testing.utils import skip_unless_lms
 
 from openedx.core.djangolib.testing.utils import CacheIsolationTestCase
 from xmodule.modulestore.tests.django_utils import ModuleStoreTestCase
@@ -65,6 +66,7 @@ class MicrobachelorsExternalIDTest(ModuleStoreTestCase, CacheIsolationTestCase):
 
         return program
 
+    @skip_unless_lms
     def test_enroll_mb_create_external_id(self):
         course_run_key = self.program['courses'][0]['course_runs'][0]['key']
 
@@ -81,6 +83,7 @@ class MicrobachelorsExternalIDTest(ModuleStoreTestCase, CacheIsolationTestCase):
         assert external_id is not None
         assert external_id.external_id_type.name == ExternalIdType.MICROBACHELORS_COACHING
 
+    @skip_unless_lms
     def test_second_enroll_mb_no_new_external_id(self):
         course_run_key1 = self.program['courses'][0]['course_runs'][0]['key']
         course_run_key2 = self.program['courses'][1]['course_runs'][0]['key']
